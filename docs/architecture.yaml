@@ -1,0 +1,340 @@
+Diagram:
+  DefinitionFiles:
+    - Type: URL
+      Url: "https://raw.githubusercontent.com/awslabs/diagram-as-code/main/definitions/definition-for-aws-icons-light.yaml"
+
+  Resources:
+    Canvas:
+      Type: AWS::Diagram::Canvas
+      Direction: horizontal
+      Children:
+        - LeftColumn
+        - AWSCloud
+        - DataSources
+
+    # === Left: Users + Slack ===
+    LeftColumn:
+      Type: AWS::Diagram::VerticalStack
+      Children:
+        - UserGroup
+        - SlackApp
+
+    UserGroup:
+      Type: AWS::Diagram::Resource
+      Preset: Users
+      Title: "Users"
+
+    SlackApp:
+      Type: AWS::Diagram::Resource
+      Icon: "icons/slack.png"
+      Title: "Slack"
+
+    # === AWS Cloud ===
+    AWSCloud:
+      Type: AWS::Diagram::Cloud
+      Direction: horizontal
+      Children:
+        - SlackIntegration
+        - AgentCoreSection
+
+    # --- Slack Integration ---
+    SlackIntegration:
+      Type: AWS::Diagram::VerticalStack
+      Children:
+        - PullSection
+        - SSMParam
+        - PushSection
+
+    PullSection:
+      Type: AWS::Diagram::Resource
+      Preset: Generic group
+      Title: "Pull: Slack Mention"
+      Direction: horizontal
+      Children:
+        - PullStack
+
+    PullStack:
+      Type: AWS::Diagram::HorizontalStack
+      Children:
+        - APIGW
+        - ReceiverLambda
+        - SQSFIFO
+        - WorkerLambda
+
+    APIGW:
+      Type: AWS::ApiGatewayV2::Api
+      Title: "API Gateway"
+
+    ReceiverLambda:
+      Type: AWS::Lambda::Function
+      Title: "Receiver\n(10s)"
+
+    SQSFIFO:
+      Type: AWS::SQS::Queue
+      Title: "SQS FIFO\n+ DLQ"
+
+    WorkerLambda:
+      Type: AWS::Lambda::Function
+      Title: "Worker\n(900s)"
+
+    SSMParam:
+      Type: AWS::SSM
+      Title: "SSM\nParameter Store"
+
+    PushSection:
+      Type: AWS::Diagram::Resource
+      Preset: Generic group
+      Title: "Push: Security Hub (optional)"
+      Direction: horizontal
+      Children:
+        - PushStack
+
+    PushStack:
+      Type: AWS::Diagram::HorizontalStack
+      Children:
+        - SecurityHub
+        - EventBridgeRule
+        - PushWorkerLambda
+
+    SecurityHub:
+      Type: AWS::SecurityHub
+      Title: "Security Hub"
+
+    EventBridgeRule:
+      Type: AWS::Diagram::Resource
+      Preset: "Amazon EventBridge"
+      Title: "EventBridge\nRule"
+
+    PushWorkerLambda:
+      Type: AWS::Lambda::Function
+      Title: "Push Worker\n(900s)"
+
+    # --- AgentCore Section ---
+    AgentCoreSection:
+      Type: AWS::Diagram::Resource
+      Icon: "icons/AgentCoreRuntime.png"
+      Title: "AgentCore Runtime"
+      Direction: vertical
+      Children:
+        - AgentCoreRuntime
+
+    AgentCoreRuntime:
+      Type: AWS::Diagram::Resource
+      Preset: "Amazon Bedrock"
+      Title: "Strands Agent\n(SSE Streaming)"
+
+    # === Right: External Data Sources ===
+    DataSources:
+      Type: AWS::Diagram::Resource
+      Preset: Generic group
+      Title: "External Data Sources"
+      Direction: vertical
+      Children:
+        - NVD
+        - Shodan
+        - AWSBulletins
+        - Tavily
+
+    NVD:
+      Type: AWS::Diagram::Resource
+      Icon: "icons/nvd.png"
+      Title: "NVD API v2.0"
+
+    Shodan:
+      Type: AWS::Diagram::Resource
+      Icon: "icons/shodan.png"
+      Title: "Shodan CVEDB"
+
+    AWSBulletins:
+      Type: AWS::Diagram::Resource
+      Preset: Internet
+      Title: "AWS Bulletins"
+
+    Tavily:
+      Type: AWS::Diagram::Resource
+      Icon: "icons/tavily.png"
+      Title: "Tavily MCP"
+
+  Links:
+    # User → Slack
+    - Source: UserGroup
+      SourcePosition: S
+      Target: SlackApp
+      TargetPosition: N
+      TargetArrowHead:
+        Type: Open
+      LineColor: 'rgba(232,119,34,255)'
+      Labels:
+        AutoRight:
+          Title: "1 mention"
+          Color: 'rgba(232,119,34,255)'
+
+    # Slack → API Gateway
+    - Source: SlackApp
+      SourcePosition: E
+      Target: APIGW
+      TargetPosition: W
+      TargetArrowHead:
+        Type: Open
+      LineColor: 'rgba(232,119,34,255)'
+      LineWidth: 2
+      Labels:
+        AutoRight:
+          Title: "2 HTTPS"
+          Color: 'rgba(232,119,34,255)'
+
+    # Pull flow
+    - Source: APIGW
+      SourcePosition: E
+      Target: ReceiverLambda
+      TargetPosition: W
+      TargetArrowHead:
+        Type: Open
+      LineColor: 'rgba(232,119,34,255)'
+      Labels:
+        AutoRight:
+          Title: "3"
+
+    - Source: ReceiverLambda
+      SourcePosition: E
+      Target: SQSFIFO
+      TargetPosition: W
+      TargetArrowHead:
+        Type: Open
+      LineColor: 'rgba(232,119,34,255)'
+      Labels:
+        AutoRight:
+          Title: "4 enqueue"
+
+    - Source: SQSFIFO
+      SourcePosition: E
+      Target: WorkerLambda
+      TargetPosition: W
+      TargetArrowHead:
+        Type: Open
+      LineColor: 'rgba(232,119,34,255)'
+      Labels:
+        AutoRight:
+          Title: "5 trigger"
+
+    # Worker → AgentCore (SSE)
+    - Source: WorkerLambda
+      SourcePosition: E
+      Target: AgentCoreSection
+      TargetPosition: W
+      TargetArrowHead:
+        Type: Open
+      LineColor: 'rgba(65,105,225,255)'
+      LineWidth: 2
+      Labels:
+        AutoRight:
+          Title: "6 SSE"
+          Color: 'rgba(65,105,225,255)'
+
+    # Push flow
+    - Source: SecurityHub
+      SourcePosition: E
+      Target: EventBridgeRule
+      TargetPosition: W
+      TargetArrowHead:
+        Type: Open
+      LineColor: 'rgba(147,112,219,255)'
+      Labels:
+        AutoRight:
+          Title: "A"
+
+    - Source: EventBridgeRule
+      SourcePosition: E
+      Target: PushWorkerLambda
+      TargetPosition: W
+      TargetArrowHead:
+        Type: Open
+      LineColor: 'rgba(147,112,219,255)'
+      Labels:
+        AutoRight:
+          Title: "B"
+
+    - Source: PushWorkerLambda
+      SourcePosition: E
+      Target: AgentCoreSection
+      TargetPosition: W
+      TargetArrowHead:
+        Type: Open
+      LineColor: 'rgba(65,105,225,255)'
+      LineWidth: 2
+      Labels:
+        AutoRight:
+          Title: "C SSE"
+          Color: 'rgba(65,105,225,255)'
+
+    # Response to Slack
+    - Source: WorkerLambda
+      SourcePosition: S
+      Target: SlackApp
+      TargetPosition: E
+      TargetArrowHead:
+        Type: Open
+      Type: orthogonal
+      LineStyle: dashed
+      LineColor: 'rgba(46,139,87,255)'
+      Labels:
+        AutoLeft:
+          Title: "7 Response"
+          Color: 'rgba(46,139,87,255)'
+
+    - Source: PushWorkerLambda
+      SourcePosition: N
+      Target: SlackApp
+      TargetPosition: E
+      TargetArrowHead:
+        Type: Open
+      Type: orthogonal
+      LineStyle: dashed
+      LineColor: 'rgba(46,139,87,255)'
+      Labels:
+        AutoLeft:
+          Title: "D Notify"
+          Color: 'rgba(46,139,87,255)'
+
+    # SSM
+    - Source: ReceiverLambda
+      SourcePosition: S
+      Target: SSMParam
+      TargetPosition: N
+      TargetArrowHead:
+        Type: Open
+      LineStyle: dashed
+      LineColor: 'rgba(150,150,150,255)'
+
+    # External APIs
+    - Source: AgentCoreSection
+      SourcePosition: E
+      Target: NVD
+      TargetPosition: W
+      TargetArrowHead:
+        Type: Open
+      LineColor: 'rgba(112,128,144,255)'
+
+    - Source: AgentCoreSection
+      SourcePosition: E
+      Target: Shodan
+      TargetPosition: W
+      TargetArrowHead:
+        Type: Open
+      LineColor: 'rgba(112,128,144,255)'
+
+    - Source: AgentCoreSection
+      SourcePosition: E
+      Target: AWSBulletins
+      TargetPosition: W
+      TargetArrowHead:
+        Type: Open
+      LineColor: 'rgba(112,128,144,255)'
+
+    - Source: AgentCoreSection
+      SourcePosition: E
+      Target: Tavily
+      TargetPosition: W
+      TargetArrowHead:
+        Type: Open
+      LineColor: 'rgba(112,128,144,255)'

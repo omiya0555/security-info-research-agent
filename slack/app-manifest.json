@@ -1,0 +1,33 @@
+{
+  "display_information": {
+    "name": "Security Research Agent",
+    "description": "セキュリティ脆弱性情報の調査エージェント",
+    "long_description": "セキュリティ脆弱性情報を複数ソースから横断的に調査し、重要度判定付きの Markdown レポートを生成する AI エージェント。\n\nTools:\n- NVD API v2.0 — CVE の公式情報（CVSS, CWE, 影響製品）\n- Shodan CVEDB — リスク指標の補完（EPSS, KEV, ランサムウェア）\n- AWS Security Bulletins — AWS 固有のセキュリティ勧告\n- Tavily Web Search — ベンダー勧告・セキュリティブログの検索\n- Tavily Web Extract — Web ページの詳細情報取得\n\nSkills:\n- 読み解きテンプレート — セキュリティ事例の構造化分析（全体像 / タイムライン / 攻撃詳細 / 影響規模 / 推奨対策）",
+    "background_color": "#151536"
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "security-agent",
+      "always_online": true
+    }
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "app_mentions:read",
+        "chat:write",
+        "files:write"
+      ]
+    }
+  },
+  "settings": {
+    "event_subscriptions": {
+      "bot_events": [
+        "app_mention"
+      ]
+    },
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": false
+  }
+}

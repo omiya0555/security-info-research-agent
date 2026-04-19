@@ -9,7 +9,7 @@ const ssm = new SSMClient();
 
 const RUNTIME_ARN = process.env.RUNTIME_ARN!;
 const SSM_BOT_TOKEN = process.env.SSM_BOT_TOKEN!;
-const SNIPPET_THRESHOLD = 1500;
+const SNIPPET_THRESHOLD = 2500;
 
 let botTokenCache: string | undefined;
 
@@ -86,8 +86,152 @@ export async function uploadSnippet(
   });
 }
 
-/** AgentCore を SSE で呼び出し、イベントごとに Slack へ投稿 */
+// ========================================
+// Slack Thinking Steps API
+// ========================================
+
+interface SlackApiResponse {
+  ok: boolean;
+  ts?: string;
+  error?: string;
+}
+
+async function slackApi(
+  botToken: string,
+  method: string,
+  body: Record<string, unknown>,
+): Promise<SlackApiResponse> {
+  const res = await fetch(`https://slack.com/api/${method}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${botToken}`,
+      'Content-Type': 'application/json; charset=utf-8',
+    },
+    body: JSON.stringify(body),
+  });
+  return await res.json() as SlackApiResponse;
+}
+
+/** AgentCore を SSE で呼び出し、Thinking Steps でリアルタイム表示 */
 export async function invokeAndStream(
+  botToken: string,
+  channel: string,
+  threadTs: string,
+  prompt: string,
+  sessionId: string,
+  slackContext?: { userId?: string; teamId?: string },
+): Promise<void> {
+  // Thinking Steps ストリーム開始（chunks モードで初期化）
+  const startRes = await slackApi(botToken, 'chat.startStream', {
+    channel,
+    thread_ts: threadTs,
+    task_display_mode: 'timeline',
+    chunks: [{ type: 'markdown_text', text: ' ' }],
+    ...(slackContext?.userId ? { recipient_user_id: slackContext.userId } : {}),
+    ...(slackContext?.teamId ? { recipient_team_id: slackContext.teamId } : {}),
+  });
+
+  const streamTs = startRes.ts;
+  if (!startRes.ok || !streamTs) {
+    console.warn('chat.startStream failed, falling back to legacy:', JSON.stringify(startRes));
+    await invokeAndStreamLegacy(botToken, channel, threadTs, prompt, sessionId);
+    return;
+  }
+
+  try {
+    const response = await agentCore.send(new InvokeAgentRuntimeCommand({
+      agentRuntimeArn: RUNTIME_ARN,
+      runtimeSessionId: sessionId,
+      qualifier: 'DEFAULT',
+      payload: new TextEncoder().encode(prompt),
+    }));
+
+    const stream = response.response! as AsyncIterable<Uint8Array>;
+    let buffer = '';
+    let taskCounter = 0;
+
+    for await (const chunk of stream) {
+      buffer += new TextDecoder().decode(chunk);
+
+      let newlineIdx: number;
+      while ((newlineIdx = buffer.indexOf('\n')) !== -1) {
+        const line = buffer.slice(0, newlineIdx);
+        buffer = buffer.slice(newlineIdx + 1);
+
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const data = JSON.parse(line.slice(6));
+          switch (data.event) {
+            case 'tool_start':
+              taskCounter++;
+              await slackApi(botToken, 'chat.appendStream', {
+                channel,
+                ts: streamTs,
+                chunks: [{
+                  type: 'task_update',
+                  id: `tool_${taskCounter}`,
+                  title: `${data.label} を検索中...`,
+                  status: 'in_progress',
+                }],
+              });
+              break;
+
+            case 'tool_end':
+              await slackApi(botToken, 'chat.appendStream', {
+                channel,
+                ts: streamTs,
+                chunks: [{
+                  type: 'task_update',
+                  id: `tool_${taskCounter}`,
+                  title: data.label,
+                  status: data.error ? 'error' : 'complete',
+                  ...(data.error ? { output: data.error } : {}),
+                }],
+              });
+              break;
+
+            case 'result': {
+              const content: string = data.content ?? '';
+              if (content.length > SNIPPET_THRESHOLD) {
+                await slackApi(botToken, 'chat.stopStream', { channel, ts: streamTs });
+                await uploadSnippet(botToken, channel, threadTs, content, 'report.md', '');
+              } else {
+                await slackApi(botToken, 'chat.appendStream', {
+                  channel,
+                  ts: streamTs,
+                  chunks: [{ type: 'markdown_text', text: content }],
+                });
+                await slackApi(botToken, 'chat.stopStream', { channel, ts: streamTs });
+              }
+              return;
+            }
+
+            case 'error':
+              await slackApi(botToken, 'chat.stopStream', {
+                channel,
+                ts: streamTs,
+                markdown_text: `エラーが発生しました: ${data.message}`,
+              });
+              return;
+          }
+        } catch { /* skip malformed lines */ }
+      }
+    }
+
+    // ストリーム終了（result イベントなしで終わった場合）
+    await slackApi(botToken, 'chat.stopStream', { channel, ts: streamTs });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    await slackApi(botToken, 'chat.stopStream', {
+      channel,
+      ts: streamTs,
+      markdown_text: `調査中にエラーが発生しました: ${message}`,
+    });
+  }
+}
+
+/** Thinking Steps 非対応時のフォールバック（従来方式） */
+async function invokeAndStreamLegacy(
   botToken: string,
   channel: string,
   threadTs: string,

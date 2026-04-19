@@ -78,6 +78,7 @@ export async function handler(event: {
         threadTs,
         text: slackEvent.text,
         user: slackEvent.user,
+        teamId: payload.team_id,
         eventTs: slackEvent.event_ts,
       }),
       MessageGroupId: `${slackEvent.channel}-${threadTs}`,

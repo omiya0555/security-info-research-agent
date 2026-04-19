@@ -3,17 +3,16 @@ import { getBotToken, postToSlack, invokeAndStream } from './shared.js';
 
 export const handler: SQSHandler = async (event) => {
   for (const record of event.Records) {
-    const { channel, threadTs, text } = JSON.parse(record.body);
+    const { channel, threadTs, text, user, teamId } = JSON.parse(record.body);
     const botToken = await getBotToken();
 
     const prompt = text.replace(/<@[A-Z0-9]+>/g, '').trim() || 'hello';
-
-    await postToSlack(botToken, channel, threadTs, 'リクエストを受け付けました');
 
     try {
       await invokeAndStream(
         botToken, channel, threadTs, prompt,
         `slack-thread-${channel}-${threadTs}`,
+        { userId: user, teamId },
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';

@@ -1,4 +1,4 @@
-import { Agent, McpClient, BedrockModel, SlidingWindowConversationManager } from '@strands-agents/sdk';
+import { Agent, McpClient, BedrockModel, SummarizingConversationManager } from '@strands-agents/sdk';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 import { shodanCve } from './tools/shodan-cve.js';
@@ -45,6 +45,9 @@ const SYSTEM_PROMPT = `<role>
 
 - セキュリティ情報の調査を行う際は、security-investigation スキルを MUST 使用すること
 - 読み解きテンプレートで分析する場合は、analysis-template スキルを MUST 使用すること
+- 対応優先度や SLA の判定を依頼された場合は、cve-prioritization スキルを MUST 使用すること
+- SBOM や依存関係リスト（package.json / requirements.txt / pom.xml / CycloneDX 等）を貼付して脆弱性確認を依頼された場合は、sbom-analysis スキルを MUST 使用すること
+- MITRE ATT&CK マッピングや TTP による分類を依頼された場合は、mitre-attack-mapping スキルを MUST 使用すること
 </instructions>
 
 <output_format>
@@ -99,9 +102,9 @@ export async function createAgent() {
     maxTokens: Number(process.env.MAX_TOKENS) || 4096,
   });
 
-  const conversationManager = new SlidingWindowConversationManager({
-    windowSize: Number(process.env.WINDOW_SIZE) || 10,
-    shouldTruncateResults: process.env.TRUNCATE_RESULTS !== 'false',
+  const conversationManager = new SummarizingConversationManager({
+    summaryRatio: Number(process.env.SUMMARY_RATIO) || 0.3,
+    preserveRecentMessages: Number(process.env.PRESERVE_RECENT_MESSAGES) || 20,
   });
 
   return new Agent({

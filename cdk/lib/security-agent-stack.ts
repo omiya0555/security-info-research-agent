@@ -30,6 +30,8 @@ export class SecurityAgentStack extends cdk.Stack {
       environmentVariables: {
         SSM_TAVILY_API_KEY: `${SSM_PREFIX}/tavily-api-key`,
         SSM_NVD_API_KEY: `${SSM_PREFIX}/nvd-api-key`,
+        SUMMARY_RATIO: '0.3',
+        PRESERVE_RECENT_MESSAGES: '20',
       },
     });
 

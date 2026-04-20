@@ -3,6 +3,40 @@ import { ShodanCveInputSchema } from '../schemas/shodan.js';
 
 const SHODAN_BASE_URL = 'https://cvedb.shodan.io';
 const DEFAULT_RESULTS_PER_PAGE = 20;
+const MAX_REFERENCES = 3;
+const MAX_CPES = 5;
+
+type ShodanCve = {
+    cve_id?: string;
+    summary?: string;
+    cvss?: number;
+    cvss_v2?: number;
+    cvss_v3?: number;
+    epss?: number;
+    ranking_epss?: number;
+    kev?: boolean;
+    propose_action?: string;
+    ransomware_campaign?: string;
+    references?: string[];
+    published_time?: string;
+    cpes?: string[];
+};
+
+function compactCve(c: ShodanCve) {
+    return {
+        cveId: c.cve_id,
+        summary: c.summary,
+        cvss: c.cvss_v3 ?? c.cvss ?? c.cvss_v2,
+        epss: c.epss,
+        ranking_epss: c.ranking_epss,
+        kev: c.kev,
+        ransomware_campaign: c.ransomware_campaign,
+        propose_action: c.propose_action,
+        published: c.published_time,
+        cpes: c.cpes?.slice(0, MAX_CPES),
+        references: c.references?.slice(0, MAX_REFERENCES),
+    };
+}
 
 export const shodanCve = tool({
     name: 'shodan_cve',
@@ -12,16 +46,14 @@ export const shodanCve = tool({
     inputSchema: ShodanCveInputSchema,
 
     callback: async (input) => {
-        // cveIdが指定されていれば単体検索、なければ一覧検索
         if (input.cveId) {
             const url = `${SHODAN_BASE_URL}/cve/${input.cveId}`;
             const response = await fetch(url);
             if (!response.ok) return `Error: ${response.status} ${response.statusText}`;
-            const data = await response.json();
-            return JSON.stringify({ ...data, _sourceUrl: url });
+            const data = await response.json() as ShodanCve;
+            return JSON.stringify({ ...compactCve(data), _sourceUrl: url });
         }
 
-        // 一覧検索: クエリパラメータを組み立て
         const params = new URLSearchParams();
         if (input.product) params.set('product', input.product);
         if (input.isKev) params.set('is_kev', 'true');
@@ -33,7 +65,10 @@ export const shodanCve = tool({
         const url = `${SHODAN_BASE_URL}/cves?${params}`;
         const res = await fetch(url);
         if (!res.ok) return `Error: ${res.status} ${res.statusText}`;
-        const data = await res.json();
-        return JSON.stringify({ ...data, _sourceUrl: url });
+        const data = await res.json() as { cves?: ShodanCve[] };
+        return JSON.stringify({
+            cves: (data.cves ?? []).map(compactCve),
+            _sourceUrl: url,
+        });
     },
 });

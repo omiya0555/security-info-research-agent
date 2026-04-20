@@ -22,9 +22,9 @@ dist
 # CDK
 cdk/.cdk.staging
 cdk/cdk.out
-cdk/*.js
+cdk/**/*.js
 !cdk/jest.config.js
-cdk/*.d.ts
+cdk/**/*.d.ts
 
 # TypeScript
 *.tsbuildinfo
@@ -35,3 +35,6 @@ docs/architecture.png
 # agentcore CLI (検証時に生成された残骸)
 agentcore/
 app/
+
+# サンプル/検証用の外部資料（DL したスキル定義など）
+samples/
